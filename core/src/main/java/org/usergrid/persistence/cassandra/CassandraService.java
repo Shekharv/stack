@@ -100,6 +100,7 @@ public class CassandraService {
     public static final String APPLICATIONS_CF = "Applications";
     public static final String PROPERTIES_CF = "Properties";
     public static final String TOKENS_CF = "Tokens";
+    public static final String PRINCIPAL_TOKEN_CF = "PrincipalTokens";
 
     public static final int DEFAULT_COUNT = 1000;
     public static final int ALL_COUNT = 100000;
@@ -306,6 +307,9 @@ public class CassandraService {
 
         boolean delay_configuration = (!"org.apache.cassandra.locator.SimpleStrategy"
                 .equals(strategy_class)) || (replication_factor > 1);
+        if ( properties.getProperty("cassandra.configuration.use_delay") != null ) {
+          delay_configuration = Boolean.parseBoolean(properties.getProperty("cassandra.configuration.use_delay"));
+        }
 
         if (delay_configuration) {
             logger.info("Waiting 10s after keyspace creation");

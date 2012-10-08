@@ -3,10 +3,10 @@ package org.usergrid.rest.management;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
-import static org.usergrid.management.cassandra.ManagementServiceImpl.PROPERTIES_ADMIN_USERS_REQUIRE_CONFIRMATION;
-import static org.usergrid.management.cassandra.ManagementServiceImpl.PROPERTIES_SYSADMIN_APPROVES_ADMIN_USERS;
-import static org.usergrid.management.cassandra.ManagementServiceImpl.PROPERTIES_SYSADMIN_APPROVES_ORGANIZATIONS;
-import static org.usergrid.management.cassandra.ManagementServiceImpl.PROPERTIES_SYSADMIN_EMAIL;
+import static org.usergrid.management.AccountCreationProps.PROPERTIES_ADMIN_USERS_REQUIRE_CONFIRMATION;
+import static org.usergrid.management.AccountCreationProps.PROPERTIES_SYSADMIN_APPROVES_ADMIN_USERS;
+import static org.usergrid.management.AccountCreationProps.PROPERTIES_SYSADMIN_APPROVES_ORGANIZATIONS;
+import static org.usergrid.management.AccountCreationProps.PROPERTIES_SYSADMIN_EMAIL;
 import static org.usergrid.utils.MapUtils.hashMap;
 
 import java.io.IOException;
@@ -144,7 +144,7 @@ public class RegistrationTest extends AbstractRestTest {
         properties.setProperty(PROPERTIES_SYSADMIN_EMAIL,
                 "sysadmin-1@mockserver.com");
 
-        String t = mgmtToken();
+        String t = adminToken();
         MultivaluedMap formData = new MultivaluedMapImpl();
         formData.add("foo", "bar");
         try {
@@ -172,7 +172,7 @@ public class RegistrationTest extends AbstractRestTest {
         properties.setProperty(PROPERTIES_SYSADMIN_EMAIL,
                 "sysadmin-1@mockserver.com");
 
-        String t = mgmtToken();
+        String t = adminToken();
         postAddAdminToOrg("test-organization", "test-admin@mockserver.com",
                 "password", t);
 

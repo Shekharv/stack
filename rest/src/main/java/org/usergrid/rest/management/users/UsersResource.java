@@ -46,6 +46,7 @@ import org.usergrid.rest.AbstractContextResource;
 import org.usergrid.rest.ApiResponse;
 import org.usergrid.rest.exceptions.AuthErrorInfo;
 import org.usergrid.rest.exceptions.RedirectionException;
+import org.usergrid.security.shiro.utils.SubjectUtils;
 
 import com.sun.jersey.api.json.JSONWithPadding;
 import com.sun.jersey.api.view.Viewable;
@@ -78,6 +79,16 @@ public class UsersResource extends AbstractContextResource {
 	public UserResource getUserByUsername(@Context UriInfo ui,
 			@PathParam("username") String username) throws Exception {
 
+	    if ("me".equals(username)) {
+	        UserInfo user = SubjectUtils.getAdminUser();
+	        if ((user != null) && (user.getUuid() != null)) {
+	            return getSubResource(UserResource.class).init(
+	                    management.getAdminUserByUuid(user.getUuid()));
+	        }
+	        throw mappableSecurityException("unauthorized",
+	                "No admin identity for access credentials provided");
+	    }
+
 		return getSubResource(UserResource.class).init(
 				management.getAdminUserByUsername(username));
 	}
@@ -105,7 +116,7 @@ public class UsersResource extends AbstractContextResource {
 		response.setAction("create user");
 
 		UserInfo user = management.createAdminUser(username, name, email,
-				password, false, false, true);
+				password, false, false);
 		Map<String, Object> result = new LinkedHashMap<String, Object>();
 		if (user != null) {
 			result.put("user", user);

@@ -13,27 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  ******************************************************************************/
-package org.usergrid.mongo;
+package org.usergrid.security.salt;
 
-import org.junit.Ignore;
+import java.util.UUID;
 
-@Ignore
-public class MongoServerTest extends MongoServer {
+/**
+ * Returns the salt for a user to be used to hash the password
+ * @author tnine
+ *
+ */
+public interface SaltProvider {
 
-	public MongoServerTest() {
-		super();
-	}
-
-	public static void main(String[] args) throws Exception {
-		MongoServer server = new MongoServerTest();
-		server.startSpring();
-		server.startServer();
-	}
-
-	@Override
-	public String[] getApplicationContextLocations() {
-		String[] locations = { "testApplicationContext.xml" };
-		return locations;
-	}
-
+    /**
+     * Get the salt that should be used for a user in the given application
+     * @param applicationName
+     * @param username
+     * @return
+     */
+    public String getSalt(UUID applicationId, UUID userId);
 }

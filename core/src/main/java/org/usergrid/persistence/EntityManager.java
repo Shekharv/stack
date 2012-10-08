@@ -42,6 +42,13 @@ public interface EntityManager {
 
     public RelationManager getRelationManager(EntityRef entityRef);
 
+    /**
+     * Get all collections for the application. Includes both user defined
+     * collections and schema collections
+     * 
+     * @return
+     * @throws Exception
+     */
     public Set<String> getApplicationCollections() throws Exception;
 
     public Map<String, Object> getApplicationCollectionMetadata()
@@ -477,9 +484,9 @@ public interface EntityManager {
     public Set<String> getCollectionIndexes(EntityRef entity,
             String collectionName) throws Exception;
 
-	public void copyRelationships(EntityRef srcEntityRef,
-			String srcRelationName, EntityRef dstEntityRef,
-			String dstRelationName) throws Exception;
+    public void copyRelationships(EntityRef srcEntityRef,
+            String srcRelationName, EntityRef dstEntityRef,
+            String dstRelationName) throws Exception;
 
     /**
      * Connect the specified entity to another entity with the specified
@@ -857,5 +864,22 @@ public interface EntityManager {
 
     public Map<String, Role> getUserRolesWithTitles(UUID userId)
             throws Exception;
+
+
+    // Group role membership
+
+    public Map<String, Role> getGroupRolesWithTitles(UUID userId) throws Exception;
+
+    public void addGroupToRole(UUID userId, String roleName) throws Exception;
+
+    public void removeGroupFromRole(UUID userId, String roleName) throws Exception;
+
+    // Group permissions
+
+    public Set<String> getGroupPermissions(UUID groupId) throws Exception;
+
+    public void grantGroupPermission(UUID groupId, String permission) throws Exception;
+
+    public void revokeGroupPermission(UUID groupId, String permission) throws Exception;
 
 }

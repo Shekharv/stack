@@ -18,7 +18,6 @@ package org.usergrid.persistence;
 import static org.apache.commons.codec.binary.Base64.decodeBase64;
 import static org.apache.commons.lang.StringUtils.isBlank;
 import static org.apache.commons.lang.StringUtils.split;
-import static org.usergrid.persistence.Schema.PROPERTY_TYPE;
 import static org.usergrid.persistence.Schema.PROPERTY_UUID;
 import static org.usergrid.utils.ClassUtils.cast;
 import static org.usergrid.utils.ConversionUtils.uuid;
@@ -40,7 +39,6 @@ import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.ListIterator;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -51,11 +49,13 @@ import org.antlr.runtime.ANTLRStringStream;
 import org.antlr.runtime.ClassicToken;
 import org.antlr.runtime.CommonTokenStream;
 import org.antlr.runtime.RecognitionException;
+import org.antlr.runtime.Token;
 import org.antlr.runtime.TokenRewriteStream;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.usergrid.persistence.Results.Level;
+import org.usergrid.persistence.exceptions.QueryParseException;
 import org.usergrid.persistence.query.tree.AndOperand;
 import org.usergrid.persistence.query.tree.ContainsOperand;
 import org.usergrid.persistence.query.tree.Equal;
@@ -64,12 +64,9 @@ import org.usergrid.persistence.query.tree.GreaterThan;
 import org.usergrid.persistence.query.tree.GreaterThanEqual;
 import org.usergrid.persistence.query.tree.LessThan;
 import org.usergrid.persistence.query.tree.LessThanEqual;
-import org.usergrid.persistence.query.tree.LiteralFactory;
 import org.usergrid.persistence.query.tree.Operand;
-import org.usergrid.persistence.query.tree.Property;
 import org.usergrid.persistence.query.tree.QueryFilterLexer;
 import org.usergrid.persistence.query.tree.QueryFilterParser;
-import org.usergrid.persistence.query.tree.QueryVisitor;
 import org.usergrid.persistence.query.tree.WithinOperand;
 import org.usergrid.utils.JsonUtils;
 
@@ -109,9 +106,9 @@ public class Query {
     public Query() {
     }
 
-    public Query(String type) {
-        this.type = type;
-    }
+    // public Query(String type) {
+    // this.type = type;
+    // }
 
     public Query(Query q) {
         if (q != null) {
@@ -148,11 +145,11 @@ public class Query {
                     q.categories) : null;
             counterFilters = q.counterFilters != null ? new ArrayList<CounterFilterPredicate>(
                     q.counterFilters) : null;
-            
+
         }
     }
 
-    public static Query fromQL(String ql) {
+    public static Query fromQL(String ql) throws QueryParseException {
         if (ql == null) {
             return null;
         }
@@ -168,17 +165,28 @@ public class Query {
             }
         }
 
+        ANTLRStringStream in = new ANTLRStringStream(ql.trim());
+        QueryFilterLexer lexer = new QueryFilterLexer(in);
+        CommonTokenStream tokens = new CommonTokenStream(lexer);
+        QueryFilterParser parser = new QueryFilterParser(tokens);
+       
         try {
-            ANTLRStringStream in = new ANTLRStringStream(ql.trim());
-            QueryFilterLexer lexer = new QueryFilterLexer(in);
-            CommonTokenStream tokens = new CommonTokenStream(lexer);
-            QueryFilterParser parser = new QueryFilterParser(tokens);
-            Query q = parser.ql().query;
-            return q;
-        } catch (Exception e) {
-            logger.error("Unable to parse \"" + ql + "\"", e);
+            return parser.ql().query;
+        } catch (RecognitionException e) {
+            logger.error("Unable to parse \"{}\"", ql, e);
+            
+            int index = e.index;
+            int lineNumber = e.line;
+            Token token = e.token;
+            
+            String message = String.format("The query cannot be parsed.  The token '%s' at column %d on line %d cannot be parsed", token.getText(), index, lineNumber );
+            
+         
+            throw new QueryParseException(message, e);
         }
-        return null;
+        
+
+        
     }
 
     public static Query newQueryIfNull(Query query) {
@@ -188,7 +196,7 @@ public class Query {
         return query;
     }
 
-    public static Query fromJsonString(String json) {
+    public static Query fromJsonString(String json) throws QueryParseException {
         Object o = JsonUtils.parse(json);
         if (o instanceof Map) {
             @SuppressWarnings({ "unchecked", "rawtypes" })
@@ -198,7 +206,7 @@ public class Query {
         return null;
     }
 
-    public static Query fromQueryParams(Map<String, List<String>> params) {
+    public static Query fromQueryParams(Map<String, List<String>> params) throws QueryParseException {
         String type = null;
         Query q = null;
         String ql = null;
@@ -242,7 +250,7 @@ public class Query {
         categories = params.get("category");
 
         l = params.get("counter");
-        
+
         if (!isEmpty(l)) {
             counterFilters = CounterFilterPredicate.fromList(l);
         }
@@ -262,12 +270,12 @@ public class Query {
         }
 
         if (ql != null) {
-                q = Query.fromQL(decode(ql));
-           
+            q = Query.fromQL(decode(ql));
+
         }
 
         l = params.get("filter");
-        
+
         if (!isEmpty(l)) {
             q = newQueryIfNull(q);
             for (String s : l) {
@@ -413,7 +421,7 @@ public class Query {
     public boolean hasQueryPredicates() {
         return rootOperand != null;
     }
-    
+
     public boolean containsNameOrEmailIdentifiersOnly() {
         if (hasQueryPredicates()) {
             return false;
@@ -428,7 +436,7 @@ public class Query {
         }
         return true;
     }
-    
+
     public String getSingleNameOrEmailIdentifier() {
         if (!containsSingleNameOrEmailIdentifier()) {
             return null;
@@ -441,11 +449,9 @@ public class Query {
                 && (identifiers.size() == 1);
     }
 
-    
     public boolean containsSingleUuidIdentifier() {
         return containsUuidIdentifersOnly() && (identifiers.size() == 1);
     }
-    
 
     public boolean containsUuidIdentifersOnly() {
         if (hasQueryPredicates()) {
@@ -461,14 +467,13 @@ public class Query {
         }
         return true;
     }
-    
+
     public UUID getSingleUuidIdentifier() {
         if (!containsSingleUuidIdentifier()) {
             return null;
         }
         return (identifiers.get(0).getUUID());
     }
-
 
     public boolean isIdsOnly() {
         if ((selectSubjects.size() == 1)
@@ -671,9 +676,10 @@ public class Query {
     public boolean hasSortPredicates() {
         return !sortPredicates.isEmpty();
     }
-    
+
     /**
      * Add the filter from a string
+     * 
      * @param filter
      * @return
      * @throws RecognitionException
@@ -683,21 +689,21 @@ public class Query {
         QueryFilterLexer lexer = new QueryFilterLexer(in);
         TokenRewriteStream tokens = new TokenRewriteStream(lexer);
         QueryFilterParser parser = new QueryFilterParser(tokens);
-        
+
         Operand root = null;
-        
+
         try {
-           root =  parser.ql().query.getRootOperand();    
-           
+            root = parser.ql().query.getRootOperand();
+
         } catch (RecognitionException e) {
-            //TODO T.N. if we can't parse we just ignore, what error should we throw?
+            // todo: should we create a specific Exception for this? checked?
+          throw new RuntimeException("Unknown operation: " + filter, e);
         }
-        
-        if(root != null){
+
+        if (root != null) {
             addClause(root);
         }
-        
-        
+
         return this;
 
     }
@@ -719,6 +725,7 @@ public class Query {
 
     /**
      * Add a less than equal filter to this query. && with existing clauses
+     * 
      * @param propName
      * @param value
      * @return
@@ -733,6 +740,7 @@ public class Query {
 
     /**
      * Add a equal filter to this query. && with existing clauses
+     * 
      * @param propName
      * @param value
      * @return
@@ -747,7 +755,8 @@ public class Query {
     }
 
     /**
-     * Add a greater than equal  filter to this query. && with existing clauses
+     * Add a greater than equal filter to this query. && with existing clauses
+     * 
      * @param propName
      * @param value
      * @return
@@ -781,11 +790,11 @@ public class Query {
      * @return
      */
     public Query addContainsFilter(String propName, String keyword) {
-        ContainsOperand equality = new ContainsOperand(null);
+        ContainsOperand equality = new ContainsOperand(new ClassicToken(0, "contains"));
 
         equality.setProperty(propName);
-        equality.setValue(keyword);
-        
+        equality.setLiteral(keyword);
+
         addClause(equality);
 
         return this;
@@ -806,20 +815,20 @@ public class Query {
         equality.setDistance(distance);
         equality.setLattitude(lattitude);
         equality.setLongitude(longitude);
-        
+
         addClause(equality);
 
         return this;
     }
-    
-    private void addClause(EqualityOperand equals, String propertyName, Object value){
+
+    private void addClause(EqualityOperand equals, String propertyName,
+            Object value) {
         equals.setProperty(propertyName);
         equals.setLiteral(value);
         addClause(equals);
     }
 
     private void addClause(Operand equals) {
-      
 
         if (rootOperand == null) {
             rootOperand = equals;
@@ -834,7 +843,6 @@ public class Query {
         rootOperand = and;
     }
 
- 
     public Operand getRootOperand() {
         return this.rootOperand;
     }
@@ -843,7 +851,6 @@ public class Query {
         this.rootOperand = root;
     }
 
-    
     public void setStartResult(UUID startResult) {
         this.startResult = startResult;
     }
@@ -1767,14 +1774,13 @@ public class Query {
                 Map<String, Object> result = new LinkedHashMap<String, Object>();
                 Map<String, String> selects = getSelectAssignments();
                 for (Map.Entry<String, String> select : selects.entrySet()) {
-                    Object obj = JsonUtils.select(entity, select.getKey(),
-                            false);
+                    Object obj = JsonUtils.select(entity, select.getValue(), false);
                     if (obj == null) {
                         obj = "";
                     } else {
                         include = true;
                     }
-                    result.put(select.getValue(), obj);
+                    result.put(select.getKey(), obj);
                 }
                 if (include) {
                     results.add(result);
@@ -1812,19 +1818,20 @@ public class Query {
         }
         return null;
     }
-    
+
     /**
      * Decode string
+     * 
      * @param input
      * @return
      */
-    private static String decode(String input){
+    private static String decode(String input) {
         try {
             return URLDecoder.decode(input, "UTF-8");
         } catch (UnsupportedEncodingException e) {
-            //shouldn't happen, but just in case
+            // shouldn't happen, but just in case
             throw new RuntimeException(e);
-            
+
         }
     }
 }

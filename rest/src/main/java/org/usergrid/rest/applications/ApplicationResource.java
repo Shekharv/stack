@@ -18,6 +18,7 @@ package org.usergrid.rest.applications;
 import static javax.servlet.http.HttpServletResponse.SC_BAD_REQUEST;
 import static javax.servlet.http.HttpServletResponse.SC_OK;
 import static javax.ws.rs.core.MediaType.APPLICATION_FORM_URLENCODED;
+import static javax.ws.rs.core.MediaType.APPLICATION_JSON;
 import static javax.ws.rs.core.MediaType.APPLICATION_JSON_TYPE;
 import static org.apache.commons.lang.StringUtils.isNotBlank;
 import static org.usergrid.security.shiro.utils.SubjectUtils.isApplicationAdmin;
@@ -27,9 +28,11 @@ import static org.usergrid.utils.StringUtils.stringOrSubstringAfterFirst;
 import static org.usergrid.utils.StringUtils.stringOrSubstringBeforeFirst;
 
 import java.net.URLEncoder;
+import java.util.Map;
 import java.util.UUID;
 
 import javax.ws.rs.Consumes;
+import javax.ws.rs.DELETE;
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.FormParam;
 import javax.ws.rs.GET;
@@ -48,6 +51,7 @@ import org.apache.amber.oauth2.common.error.OAuthError;
 import org.apache.amber.oauth2.common.exception.OAuthProblemException;
 import org.apache.amber.oauth2.common.message.OAuthResponse;
 import org.apache.amber.oauth2.common.message.types.GrantType;
+import org.apache.commons.lang.NotImplementedException;
 import org.apache.commons.lang.StringUtils;
 import org.apache.shiro.authz.UnauthorizedException;
 import org.apache.shiro.codec.Base64;
@@ -60,13 +64,16 @@ import org.usergrid.mq.QueueManager;
 import org.usergrid.persistence.Identifier;
 import org.usergrid.persistence.entities.User;
 import org.usergrid.rest.ApiResponse;
+import org.usergrid.rest.applications.assets.AssetsResource;
 import org.usergrid.rest.applications.events.EventsResource;
 import org.usergrid.rest.applications.queues.QueueResource;
 import org.usergrid.rest.applications.users.UsersResource;
+import org.usergrid.rest.exceptions.NoOpException;
 import org.usergrid.rest.exceptions.RedirectionException;
 import org.usergrid.rest.security.annotations.RequireApplicationAccess;
 import org.usergrid.security.oauth.AccessInfo;
 import org.usergrid.security.oauth.ClientCredentialsInfo;
+import org.usergrid.services.ServiceAction;
 
 import com.sun.jersey.api.json.JSONWithPadding;
 import com.sun.jersey.api.view.Viewable;
@@ -74,385 +81,452 @@ import com.sun.jersey.api.view.Viewable;
 @Component("org.usergrid.rest.applications.ApplicationResource")
 @Scope("prototype")
 @Produces({ MediaType.APPLICATION_JSON, "application/javascript",
-		"application/x-javascript", "text/ecmascript",
-		"application/ecmascript", "text/jscript" })
+        "application/x-javascript", "text/ecmascript",
+        "application/ecmascript", "text/jscript" })
 public class ApplicationResource extends ServiceResource {
 
-	public static final Logger logger = LoggerFactory
-			.getLogger(ServiceResource.class);
+    public static final Logger logger = LoggerFactory
+            .getLogger(ApplicationResource.class);
 
-	UUID applicationId;
-	QueueManager queues;
+    UUID applicationId;
+    QueueManager queues;
 
-	public ApplicationResource() {
-	}
+    public ApplicationResource() {
+    }
 
-	public ApplicationResource init(UUID applicationId) throws Exception {
-		this.applicationId = applicationId;
-		services = smf.getServiceManager(applicationId);
-		queues = qmf.getQueueManager(applicationId);
-		return this;
-	}
+    public ApplicationResource init(UUID applicationId) throws Exception {
+        this.applicationId = applicationId;
+        services = smf.getServiceManager(applicationId);
+        queues = qmf.getQueueManager(applicationId);
+        return this;
+    }
 
-	public QueueManager getQueues() {
-		return queues;
-	}
+    public QueueManager getQueues() {
+        return queues;
+    }
 
-	@Override
-	public UUID getApplicationId() {
-		return applicationId;
-	}
+    @Override
+    public UUID getApplicationId() {
+        return applicationId;
+    }
 
-	@Path("auth")
-	public AuthResource getAuthResource() throws Exception {
-		return getSubResource(AuthResource.class);
-	}
+    @Path("auth")
+    public AuthResource getAuthResource() throws Exception {
+        return getSubResource(AuthResource.class);
+    }
 
-	@RequireApplicationAccess
-	@Path("queues")
-	public QueueResource getQueueResource() throws Exception {
-		return getSubResource(QueueResource.class).init(queues, "");
-	}
+    @RequireApplicationAccess
+    @Path("queues")
+    public QueueResource getQueueResource() throws Exception {
+        return getSubResource(QueueResource.class).init(queues, "");
+    }
 
-	@RequireApplicationAccess
-	@Path("events")
-	public EventsResource getEventsResource(@Context UriInfo ui)
-			throws Exception {
-		addParameter(getServiceParameters(), "events");
+    @RequireApplicationAccess
+    @Path("events")
+    public EventsResource getEventsResource(@Context UriInfo ui)
+            throws Exception {
+        addParameter(getServiceParameters(), "events");
 
-		PathSegment ps = getFirstPathSegment("events");
-		if (ps != null) {
-			addMatrixParams(getServiceParameters(), ui, ps);
-		}
+        PathSegment ps = getFirstPathSegment("events");
+        if (ps != null) {
+            addMatrixParams(getServiceParameters(), ui, ps);
+        }
 
-		return getSubResource(EventsResource.class);
-	}
+        return getSubResource(EventsResource.class);
+    }
 
-	@RequireApplicationAccess
-	@Path("event")
-	public EventsResource getEventResource(@Context UriInfo ui)
-			throws Exception {
-		return getEventsResource(ui);
-	}
+    @RequireApplicationAccess
+    @Path("event")
+    public EventsResource getEventResource(@Context UriInfo ui)
+            throws Exception {
+        return getEventsResource(ui);
+    }
 
-	@Path("users")
-	public UsersResource getUsers(@Context UriInfo ui) throws Exception {
+  @RequireApplicationAccess
+  @Path("assets")
+  public AssetsResource getAssetsResource(@Context UriInfo ui)
+          throws Exception {
+    logger.info("in assets n applicationResource");
+    addParameter(getServiceParameters(), "assets");
 
-		logger.info("ServiceResource.addNameParameter");
+    PathSegment ps = getFirstPathSegment("assets");
+    if (ps != null) {
+      addMatrixParams(getServiceParameters(), ui, ps);
+    }
 
-		addParameter(getServiceParameters(), "users");
+    return getSubResource(AssetsResource.class);
+  }
 
-		PathSegment ps = getFirstPathSegment("users");
-		if (ps != null) {
-			addMatrixParams(getServiceParameters(), ui, ps);
-		}
 
-		return getSubResource(UsersResource.class);
-	}
+  @RequireApplicationAccess
+  @Path("asset")
+  public AssetsResource getAssetResource(@Context UriInfo ui)
+          throws Exception {
+    // TODO change to singular
+    logger.info("in asset in applicationResource");
+    return getAssetsResource(ui);
+  }
 
-	@Path("user")
-	public UsersResource getUsers2(@Context UriInfo ui) throws Exception {
-		return getUsers(ui);
-	}
+    @Path("users")
+    public UsersResource getUsers(@Context UriInfo ui) throws Exception {
+        logger.info("ApplicationResource.getUsers");
+        addParameter(getServiceParameters(), "users");
 
-	private static String wrapWithCallback(AccessInfo accessInfo,
-			String callback) {
-		return wrapWithCallback(mapToJsonString(accessInfo), callback);
-	}
+        PathSegment ps = getFirstPathSegment("users");
+        if (ps != null) {
+            addMatrixParams(getServiceParameters(), ui, ps);
+        }
 
-	private static String wrapWithCallback(String json, String callback) {
-		if (StringUtils.isNotBlank(callback)) {
-			json = callback + "(" + json + ")";
-		}
-		return json;
-	}
+        return getSubResource(UsersResource.class);
+    }
 
-	private static MediaType jsonMediaType(String callback) {
-		return isNotBlank(callback) ? new MediaType("application", "javascript")
-				: APPLICATION_JSON_TYPE;
-	}
+    @Path("user")
+    public UsersResource getUsers2(@Context UriInfo ui) throws Exception {
+        return getUsers(ui);
+    }
 
-	@GET
-	@Path("token")
-	public Response getAccessToken(@Context UriInfo ui,
-			@HeaderParam("Authorization") String authorization,
-			@QueryParam("grant_type") String grant_type,
-			@QueryParam("username") String username,
-			@QueryParam("password") String password,
-			@QueryParam("pin") String pin,
-			@QueryParam("client_id") String client_id,
-			@QueryParam("client_secret") String client_secret,
-			@QueryParam("code") String code,
-			@QueryParam("redirect_uri") String redirect_uri,
-			@QueryParam("callback") @DefaultValue("") String callback)
-			throws Exception {
+    private static String wrapWithCallback(AccessInfo accessInfo,
+            String callback) {
+        return wrapWithCallback(mapToJsonString(accessInfo), callback);
+    }
 
-		logger.info("ApplicationResource.getAccessToken");
+    private static String wrapWithCallback(String json, String callback) {
+        if (StringUtils.isNotBlank(callback)) {
+            json = callback + "(" + json + ")";
+        }
+        return json;
+    }
 
-		User user = null;
+    private static MediaType jsonMediaType(String callback) {
+        return isNotBlank(callback) ? new MediaType("application", "javascript")
+                : APPLICATION_JSON_TYPE;
+    }
 
-		try {
+    @GET
+    @Path("token")
+    public Response getAccessToken(@Context UriInfo ui,
+            @HeaderParam("Authorization") String authorization,
+            @QueryParam("grant_type") String grant_type,
+            @QueryParam("username") String username,
+            @QueryParam("password") String password,
+            @QueryParam("pin") String pin,
+            @QueryParam("client_id") String client_id,
+            @QueryParam("client_secret") String client_secret,
+            @QueryParam("code") String code,
+            @QueryParam("ttl") long ttl,
+            @QueryParam("redirect_uri") String redirect_uri,
+            @QueryParam("callback") @DefaultValue("") String callback)
+            throws Exception {
 
-			if (authorization != null) {
-				String type = stringOrSubstringBeforeFirst(authorization, ' ')
-						.toUpperCase();
-				if ("BASIC".equals(type)) {
-					String token = stringOrSubstringAfterFirst(authorization,
-							' ');
-					String[] values = Base64.decodeToString(token).split(":");
-					if (values.length >= 2) {
-						client_id = values[0].toLowerCase();
-						client_secret = values[1];
-					}
-				}
-			}
+        logger.info("ApplicationResource.getAccessToken");
 
-			// do checking for different grant types
-			if (GrantType.PASSWORD.toString().equals(grant_type)) {
-				try {
-					user = management.verifyAppUserPasswordCredentials(
-							services.getApplicationId(), username, password);
-				} catch (Exception e1) {
-				}
-			} else if ("pin".equals(grant_type)) {
-				try {
-					user = management.verifyAppUserPinCredentials(
-							services.getApplicationId(), username, pin);
-				} catch (Exception e1) {
-				}
-			} else if ("client_credentials".equals(grant_type)) {
-				try {
-					AccessInfo access_info = management.authorizeClient(
-							client_id, client_secret);
-					if (access_info != null) {
-						return Response
-								.status(SC_OK)
-								.type(jsonMediaType(callback))
-								.entity(wrapWithCallback(access_info, callback))
-								.build();
-					}
-				} catch (Exception e1) {
-				}
-			} else if ("authorization_code".equals(grant_type)) {
-				AccessInfo access_info = new AccessInfo();
-				access_info.setAccessToken(code);
-				return Response.status(SC_OK).type(jsonMediaType(callback))
-						.entity(wrapWithCallback(access_info, callback))
-						.build();
-			}
+        User user = null;
 
-			if (user == null) {
-				OAuthResponse response = OAuthResponse
-						.errorResponse(SC_BAD_REQUEST)
-						.setError(OAuthError.TokenResponse.INVALID_GRANT)
-						.setErrorDescription("invalid username or password")
-						.buildJSONMessage();
-				return Response.status(response.getResponseStatus())
-						.type(jsonMediaType(callback))
-						.entity(wrapWithCallback(response.getBody(), callback))
-						.build();
-			}
+        try {
 
-			String token = management.getAccessTokenForAppUser(
-					services.getApplicationId(), user.getUuid());
+            if (authorization != null) {
+                String type = stringOrSubstringBeforeFirst(authorization, ' ')
+                        .toUpperCase();
+                if ("BASIC".equals(type)) {
+                    String token = stringOrSubstringAfterFirst(authorization,
+                            ' ');
+                    String[] values = Base64.decodeToString(token).split(":");
+                    if (values.length >= 2) {
+                        client_id = values[0].toLowerCase();
+                        client_secret = values[1];
+                    }
+                }
+            }
 
-			AccessInfo access_info = new AccessInfo()
-					.withExpiresIn(tokens.getMaxTokenAge(token) / 1000)
-					.withAccessToken(token).withProperty("user", user);
+            // do checking for different grant types
+            if (GrantType.PASSWORD.toString().equals(grant_type)) {
+                try {
+                    user = management.verifyAppUserPasswordCredentials(
+                            services.getApplicationId(), username, password);
+                } catch (Exception e1) {
+                }
+            } else if ("pin".equals(grant_type)) {
+                try {
+                    user = management.verifyAppUserPinCredentials(
+                            services.getApplicationId(), username, pin);
+                } catch (Exception e1) {
+                }
+            } else if ("client_credentials".equals(grant_type)) {
+                try {
+                    AccessInfo access_info = management.authorizeClient(
+                            client_id, client_secret, ttl);
+                    if (access_info != null) {
+                        return Response
+                                .status(SC_OK)
+                                .type(jsonMediaType(callback))
+                                .entity(wrapWithCallback(access_info, callback))
+                                .build();
+                    }
+                } catch (Exception e1) {
+                }
+            } else if ("authorization_code".equals(grant_type)) {
+                AccessInfo access_info = new AccessInfo();
+                access_info.setAccessToken(code);
+                return Response.status(SC_OK).type(jsonMediaType(callback))
+                        .entity(wrapWithCallback(access_info, callback))
+                        .build();
+            }
 
-			return Response.status(SC_OK).type(jsonMediaType(callback))
-					.entity(wrapWithCallback(access_info, callback)).build();
+            if (user == null) {
+                OAuthResponse response = OAuthResponse
+                        .errorResponse(SC_BAD_REQUEST)
+                        .setError(OAuthError.TokenResponse.INVALID_GRANT)
+                        .setErrorDescription("invalid username or password")
+                        .buildJSONMessage();
+                return Response.status(response.getResponseStatus())
+                        .type(jsonMediaType(callback))
+                        .entity(wrapWithCallback(response.getBody(), callback))
+                        .build();
+            }
 
-		} catch (OAuthProblemException e) {
-			logger.error("OAuth Error", e);
-			OAuthResponse res = OAuthResponse.errorResponse(SC_BAD_REQUEST)
-					.error(e).buildJSONMessage();
-			return Response.status(res.getResponseStatus())
-					.type(jsonMediaType(callback))
-					.entity(wrapWithCallback(res.getBody(), callback)).build();
-		}
-	}
+            String token = management.getAccessTokenForAppUser(
+                    services.getApplicationId(), user.getUuid(), ttl);
 
-	@POST
-	@Path("token")
-	@Consumes(APPLICATION_FORM_URLENCODED)
-	public Response getAccessTokenPost(@Context UriInfo ui,
-			@FormParam("grant_type") String grant_type,
-			@FormParam("username") String username,
-			@FormParam("password") String password,
-			@FormParam("pin") String pin,
-			@FormParam("client_id") String client_id,
-			@FormParam("client_secret") String client_secret,
-			@FormParam("code") String code,
-			@FormParam("redirect_uri") String redirect_uri,
-			@QueryParam("callback") @DefaultValue("") String callback)
-			throws Exception {
+            AccessInfo access_info = new AccessInfo()
+                    .withExpiresIn(tokens.getMaxTokenAge(token) / 1000)
+                    .withAccessToken(token).withProperty("user", user);
 
-		logger.info("ApplicationResource.getAccessTokenPost");
+            return Response.status(SC_OK).type(jsonMediaType(callback))
+                    .entity(wrapWithCallback(access_info, callback)).build();
 
-		return getAccessToken(ui, null, grant_type, username, password, pin,
-				client_id, client_secret, code, redirect_uri, callback);
-	}
+        } catch (OAuthProblemException e) {
+            logger.error("OAuth Error", e);
+            OAuthResponse res = OAuthResponse.errorResponse(SC_BAD_REQUEST)
+                    .error(e).buildJSONMessage();
+            return Response.status(res.getResponseStatus())
+                    .type(jsonMediaType(callback))
+                    .entity(wrapWithCallback(res.getBody(), callback)).build();
+        }
+    }
 
-	@GET
-	@Path("credentials")
-	@RequireApplicationAccess
-	public JSONWithPadding getKeys(@Context UriInfo ui,
-			@QueryParam("callback") @DefaultValue("callback") String callback)
-			throws Exception {
+    @POST
+    @Path("token")
+    @Consumes(APPLICATION_FORM_URLENCODED)
+    public Response getAccessTokenPost(@Context UriInfo ui,
+            @FormParam("grant_type") String grant_type,
+            @FormParam("username") String username,
+            @FormParam("password") String password,
+            @FormParam("pin") String pin,
+            @FormParam("client_id") String client_id,
+            @FormParam("client_secret") String client_secret,
+            @FormParam("code") String code,
+            @FormParam("ttl") long ttl,
+            @FormParam("redirect_uri") String redirect_uri,
+            @QueryParam("callback") @DefaultValue("") String callback)
+            throws Exception {
 
-		logger.info("AuthResource.keys");
+        logger.info("ApplicationResource.getAccessTokenPost");
 
-		if (!isApplicationAdmin(Identifier.fromUUID(applicationId))) {
-			throw new UnauthorizedException();
-		}
+        return getAccessToken(ui, null, grant_type, username, password, pin,
+                client_id, client_secret, code, ttl, redirect_uri, callback);
+    }
 
-		ClientCredentialsInfo kp = new ClientCredentialsInfo(
-				management.getClientIdForApplication(services
-						.getApplicationId()),
-				management.getClientSecretForApplication(services
-						.getApplicationId()));
+    @POST
+    @Path("token")
+    @Consumes(APPLICATION_JSON)
+    public Response getAccessTokenPostJson(@Context UriInfo ui,
+            Map<String, Object> json,
+            @QueryParam("callback") @DefaultValue("") String callback)
+            throws Exception {
 
-		return new JSONWithPadding(new ApiResponse(ui).withCredentials(kp)
-				.withAction("get application keys").withSuccess(), callback);
-	}
+        String grant_type = (String) json.get("grant_type");
+        String username = (String) json.get("username");
+        String password = (String) json.get("password");
+        String client_id = (String) json.get("client_id");
+        String client_secret = (String) json.get("client_secret");
+        String pin = (String) json.get("pin");
+        String code = (String) json.get("code");
+        String redirect_uri = (String) json.get("redirect_uri");
+        long ttl = 0;
 
-	@POST
-	@Path("credentials")
-	@RequireApplicationAccess
-	public JSONWithPadding generateKeys(@Context UriInfo ui,
-			@QueryParam("callback") @DefaultValue("callback") String callback)
-			throws Exception {
+        if (json.get("ttl") != null) {
+            try {
+                ttl = Long.parseLong(json.get("ttl").toString());
+            } catch (NumberFormatException nfe) {
+                throw new IllegalArgumentException("ttl must be a number >= 0");
+            }
+        }
+        
+        return getAccessToken(ui, null, grant_type, username, password, pin,
+                client_id, client_secret, code, ttl, redirect_uri, callback);
+    }
 
-		logger.info("AuthResource.keys");
+    @GET
+    @Path("credentials")
+    @RequireApplicationAccess
+    public JSONWithPadding getKeys(@Context UriInfo ui,
+            @QueryParam("callback") @DefaultValue("callback") String callback)
+            throws Exception {
 
-		if (!isApplicationAdmin(Identifier.fromUUID(applicationId))) {
-			throw new UnauthorizedException();
-		}
+        logger.info("AuthResource.keys");
 
-		ClientCredentialsInfo kp = new ClientCredentialsInfo(
-				management.getClientIdForApplication(services
-						.getApplicationId()),
-				management.newClientSecretForApplication(services
-						.getApplicationId()));
+        if (!isApplicationAdmin(Identifier.fromUUID(applicationId))) {
+            throw new UnauthorizedException();
+        }
 
-		return new JSONWithPadding(new ApiResponse(ui).withCredentials(kp)
-				.withAction("generate application keys").withSuccess(),
-				callback);
-	}
+        ClientCredentialsInfo kp = new ClientCredentialsInfo(
+                management.getClientIdForApplication(services
+                        .getApplicationId()),
+                management.getClientSecretForApplication(services
+                        .getApplicationId()));
 
-	@GET
-	@Path("authorize")
-	public Viewable showAuthorizeForm(@Context UriInfo ui,
-			@QueryParam("response_type") String response_type,
-			@QueryParam("client_id") String client_id,
-			@QueryParam("redirect_uri") String redirect_uri,
-			@QueryParam("scope") String scope, @QueryParam("state") String state) {
+        return new JSONWithPadding(new ApiResponse(ui).withCredentials(kp)
+                .withAction("get application keys").withSuccess(), callback);
+    }
 
-		try {
-			responseType = response_type;
-			clientId = client_id;
-			redirectUri = redirect_uri;
-			this.scope = scope;
-			this.state = state;
+    @POST
+    @Path("credentials")
+    @RequireApplicationAccess
+    public JSONWithPadding generateKeys(@Context UriInfo ui,
+            @QueryParam("callback") @DefaultValue("callback") String callback)
+            throws Exception {
 
-			ApplicationInfo app = management.getApplicationInfo(applicationId);
-			applicationName = app.getName();
+        logger.info("AuthResource.keys");
 
-			return handleViewable("authorize_form", this);
-		} catch (RedirectionException e) {
-			throw e;
-		} catch (Exception e) {
-			return handleViewable("error", e);
-		}
-	}
+        if (!isApplicationAdmin(Identifier.fromUUID(applicationId))) {
+            throw new UnauthorizedException();
+        }
 
-	@POST
-	@Path("authorize")
-	public Viewable handleAuthorizeForm(@Context UriInfo ui,
-			@FormParam("response_type") String response_type,
-			@FormParam("client_id") String client_id,
-			@FormParam("redirect_uri") String redirect_uri,
-			@FormParam("scope") String scope, @FormParam("state") String state,
-			@FormParam("username") String username,
-			@FormParam("password") String password) {
+        ClientCredentialsInfo kp = new ClientCredentialsInfo(
+                management.getClientIdForApplication(services
+                        .getApplicationId()),
+                management.newClientSecretForApplication(services
+                        .getApplicationId()));
 
-		try {
-			responseType = response_type;
-			clientId = client_id;
-			redirectUri = redirect_uri;
-			this.scope = scope;
-			this.state = state;
+        return new JSONWithPadding(new ApiResponse(ui).withCredentials(kp)
+                .withAction("generate application keys").withSuccess(),
+                callback);
+    }
 
-			User user = null;
-			try {
-				user = management.verifyAppUserPasswordCredentials(
-						services.getApplicationId(), username, password);
-			} catch (Exception e1) {
-			}
-			if ((user != null) && isNotBlank(redirect_uri)) {
-				if (!redirect_uri.contains("?")) {
-					redirect_uri += "?";
-				} else {
-					redirect_uri += "&";
-				}
-				redirect_uri += "code="
-						+ management.getAccessTokenForAppUser(
-								services.getApplicationId(), user.getUuid());
-				if (isNotBlank(state)) {
-					redirect_uri += "&state="
-							+ URLEncoder.encode(state, "UTF-8");
-				}
-				throw new RedirectionException(state);
-			} else {
-				errorMsg = "Username or password do not match";
-			}
+    @GET
+    @Path("authorize")
+    public Viewable showAuthorizeForm(@Context UriInfo ui,
+            @QueryParam("response_type") String response_type,
+            @QueryParam("client_id") String client_id,
+            @QueryParam("redirect_uri") String redirect_uri,
+            @QueryParam("scope") String scope, @QueryParam("state") String state) {
 
-			ApplicationInfo app = management.getApplicationInfo(applicationId);
-			applicationName = app.getName();
+        try {
+            responseType = response_type;
+            clientId = client_id;
+            redirectUri = redirect_uri;
+            this.scope = scope;
+            this.state = state;
 
-			return handleViewable("authorize_form", this);
-		} catch (RedirectionException e) {
-			throw e;
-		} catch (Exception e) {
-			return handleViewable("error", e);
-		}
-	}
+            ApplicationInfo app = management.getApplicationInfo(applicationId);
+            applicationName = app.getName();
 
-	String errorMsg = "";
-	String applicationName;
-	String responseType;
-	String clientId;
-	String redirectUri;
-	String scope;
-	String state;
+            return handleViewable("authorize_form", this);
+        } catch (RedirectionException e) {
+            throw e;
+        } catch (Exception e) {
+            return handleViewable("error", e);
+        }
+    }
 
-	public String getErrorMsg() {
-		return errorMsg;
-	}
+    @POST
+    @Path("authorize")
+    public Viewable handleAuthorizeForm(@Context UriInfo ui,
+            @FormParam("response_type") String response_type,
+            @FormParam("client_id") String client_id,
+            @FormParam("redirect_uri") String redirect_uri,
+            @FormParam("scope") String scope, @FormParam("state") String state,
+            @FormParam("username") String username,
+            @FormParam("password") String password) {
 
-	public String getApplicationName() {
-		return applicationName;
-	}
+        try {
+            responseType = response_type;
+            clientId = client_id;
+            redirectUri = redirect_uri;
+            this.scope = scope;
+            this.state = state;
 
-	public String getResponseType() {
-		return responseType;
-	}
+            User user = null;
+            try {
+                user = management.verifyAppUserPasswordCredentials(
+                        services.getApplicationId(), username, password);
+            } catch (Exception e1) {
+            }
+            if ((user != null) && isNotBlank(redirect_uri)) {
+                if (!redirect_uri.contains("?")) {
+                    redirect_uri += "?";
+                } else {
+                    redirect_uri += "&";
+                }
+                redirect_uri += "code="
+                        + management.getAccessTokenForAppUser(
+                                services.getApplicationId(), user.getUuid(), 0);
+                if (isNotBlank(state)) {
+                    redirect_uri += "&state="
+                            + URLEncoder.encode(state, "UTF-8");
+                }
+                throw new RedirectionException(state);
+            } else {
+                errorMsg = "Username or password do not match";
+            }
 
-	public String getClientId() {
-		return clientId;
-	}
+            ApplicationInfo app = management.getApplicationInfo(applicationId);
+            applicationName = app.getName();
 
-	public String getRedirectUri() {
-		return redirectUri;
-	}
+            return handleViewable("authorize_form", this);
+        } catch (RedirectionException e) {
+            throw e;
+        } catch (Exception e) {
+            return handleViewable("error", e);
+        }
+    }
 
-	public String getScope() {
-		return scope;
-	}
+    @DELETE
+    @RequireApplicationAccess
+    @Override
+    public JSONWithPadding executeDelete(@Context UriInfo ui,
+            @QueryParam("callback") @DefaultValue("callback") String callback)
+            throws Exception {
 
-	public String getState() {
-		return state;
-	}
+        logger.info("ApplicationResource.executeDelete");
+        
+        throw new NotImplementedException("Application delete is not allowed yet");
+    }
+    
+    String errorMsg = "";
+    String applicationName;
+    String responseType;
+    String clientId;
+    String redirectUri;
+    String scope;
+    String state;
+
+    public String getErrorMsg() {
+        return errorMsg;
+    }
+
+    public String getApplicationName() {
+        return applicationName;
+    }
+
+    public String getResponseType() {
+        return responseType;
+    }
+
+    public String getClientId() {
+        return clientId;
+    }
+
+    public String getRedirectUri() {
+        return redirectUri;
+    }
+
+    public String getScope() {
+        return scope;
+    }
+
+    public String getState() {
+        return state;
+    }
 
 }

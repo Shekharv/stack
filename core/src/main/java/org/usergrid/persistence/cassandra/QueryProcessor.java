@@ -43,13 +43,7 @@ import org.usergrid.persistence.Schema;
 import org.usergrid.persistence.exceptions.NoFullTextIndexException;
 import org.usergrid.persistence.exceptions.NoIndexException;
 import org.usergrid.persistence.exceptions.PersistenceException;
-import org.usergrid.persistence.query.ir.AndNode;
-import org.usergrid.persistence.query.ir.NotNode;
-import org.usergrid.persistence.query.ir.OrNode;
-import org.usergrid.persistence.query.ir.QueryNode;
-import org.usergrid.persistence.query.ir.QuerySlice;
-import org.usergrid.persistence.query.ir.SliceNode;
-import org.usergrid.persistence.query.ir.WithinNode;
+import org.usergrid.persistence.query.ir.*;
 import org.usergrid.persistence.query.tree.AndOperand;
 import org.usergrid.persistence.query.tree.ContainsOperand;
 import org.usergrid.persistence.query.tree.Equal;
@@ -80,7 +74,8 @@ public class QueryProcessor {
     private String entityType;
     private CollectionInfo collectionInfo;
 
-    public QueryProcessor(Query query, CollectionInfo collectionInfo) throws PersistenceException {
+    public QueryProcessor(Query query, CollectionInfo collectionInfo)
+            throws PersistenceException {
         sortCache = new SortCache(query.getSortPredicates());
         cursorCache = new CursorCache(query.getCursor());
         rootOperand = query.getRootOperand();
@@ -204,9 +199,8 @@ public class QueryProcessor {
         // stack for nodes that will be used to construct the tree and create
         // objects
         private Stack<QueryNode> nodes = new Stack<QueryNode>();
-        
-        private Schema schema = getDefaultSchema();
 
+        private Schema schema = getDefaultSchema();
 
         private int contextCount = -1;
 
@@ -301,17 +295,13 @@ public class QueryProcessor {
         @Override
         public void visit(NotOperand op) throws PersistenceException {
 
-            // create a new context since any child of NOT will need to be
-            // evaluated independently
-
-            Operand child = op.getOperation();
-
+          // create a new context since any child of NOT will need to be
+          // evaluated independently
+          Operand child = op.getOperation();
             createNewSlice(child);
-
             child.visit(this);
 
-            NotNode not = new NotNode(nodes.pop());
-            nodes.push(not);
+            nodes.push(new NotNode(nodes.pop(), new AllNode()));
         }
 
         /*
@@ -326,8 +316,7 @@ public class QueryProcessor {
 
             String propertyName = op.getProperty().getValue();
 
-            if (!schema.isPropertyFulltextIndexed(entityType,
-                    propertyName)) {
+            if (!schema.isPropertyFulltextIndexed(entityType, propertyName)) {
                 throw new NoFullTextIndexException(entityType, propertyName);
             }
 
@@ -470,7 +459,7 @@ public class QueryProcessor {
 
         /**
          * Return the current leaf node to add to if it exists. This means that
-         * we can compress multile 'AND' operations and ranges into a single
+         * we can compress multiple 'AND' operations and ranges into a single
          * node. Otherwise a new node is created and pushed to the stack
          * 
          * @param current
@@ -489,6 +478,14 @@ public class QueryProcessor {
             if (nodes.size() == 0 || !(nodes.peek() instanceof SliceNode)) {
                 return newSliceNode();
             }
+
+          // sdg - if left & right have same field name, we need to create a new slice
+          if (nodes.peek() instanceof SliceNode && current instanceof ContainsOperand) {
+            String fieldName = appendSuffix(((ContainsOperand)current).getProperty().getValue(), "keywords");
+            if (((SliceNode)nodes.peek()).getSlice(fieldName) != null) {
+              return newSliceNode();
+            }
+          }
 
             return (SliceNode) nodes.peek();
 
@@ -514,7 +511,8 @@ public class QueryProcessor {
          * @param child
          */
         private void createNewSlice(Operand child) {
-            if (child instanceof EqualityOperand || child instanceof AndOperand || child instanceof ContainsOperand) {
+            if (child instanceof EqualityOperand || child instanceof AndOperand
+                    || child instanceof ContainsOperand) {
                 newSliceNode();
             }
 
@@ -538,8 +536,10 @@ public class QueryProcessor {
         }
 
         private void checkIndexed(String propertyName) throws NoIndexException {
-            
-            if (!schema.isPropertyIndexed(entityType, propertyName) && collectionInfo != null && !collectionInfo.isSubkeyProperty(propertyName)) {
+
+            if (!schema.isPropertyIndexed(entityType, propertyName)
+                    && collectionInfo != null
+                    && !collectionInfo.isSubkeyProperty(propertyName)) {
                 throw new NoIndexException(entityType, propertyName);
             }
         }
@@ -574,12 +574,17 @@ public class QueryProcessor {
 
                 String[] parts = split(c, ':');
 
-                if (parts.length == 2 && isNotBlank(parts[1])) {
+                if (parts.length >= 1) {
 
                     int hashCode = parseInt(parts[0]);
 
-                    ByteBuffer cursorBytes = ByteBuffer
-                            .wrap(decodeBase64(parts[1]));
+                    ByteBuffer cursorBytes = null;
+
+                    if (parts.length == 2) {
+                        cursorBytes = ByteBuffer.wrap(decodeBase64(parts[1]));
+                    } else {
+                        cursorBytes = ByteBuffer.allocate(0);
+                    }
 
                     cursors.put(hashCode, cursorBytes);
                 }
@@ -621,12 +626,28 @@ public class QueryProcessor {
             }
 
             StringBuffer buff = new StringBuffer();
+            
+            int nullCount = 0;
+            ByteBuffer value = null;
 
             for (Entry<Integer, ByteBuffer> entry : cursors.entrySet()) {
+                value = entry.getValue();
+                
                 buff.append(entry.getKey());
                 buff.append(":");
-                buff.append(encodeBase64URLSafeString(bytes(entry.getValue())));
+                buff.append(encodeBase64URLSafeString(bytes(value)));
                 buff.append("|");
+                
+                //this range was empty, mark it as a null
+                if(value.remaining() == 0){
+                    nullCount++;
+                }
+                
+            }
+            
+            //all cursors are complete, return null
+            if(nullCount == cursors.size()){
+                return null;
             }
 
             // trim off the last pipe

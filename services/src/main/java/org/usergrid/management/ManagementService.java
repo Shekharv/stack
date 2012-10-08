@@ -38,16 +38,13 @@ public interface ManagementService {
 	public void activateOrganization(OrganizationInfo organization)
 			throws Exception;
 
-	public void activateOrganization(OrganizationInfo organization,
-			boolean sendEmail) throws Exception;
-
 	public void addAdminUserToOrganization(UserInfo user,
 			OrganizationInfo organization, boolean email) throws Exception;
 
 	public UUID addApplicationToOrganization(UUID organizationId,
 			UUID applicationId) throws Exception;
 
-	public AccessInfo authorizeClient(String clientId, String clientSecret)
+	public AccessInfo authorizeClient(String clientId, String clientSecret, long ttl)
 			throws Exception;
 
 	public ActivationState handleConfirmationTokenForAdminUser(UUID userId,
@@ -63,24 +60,21 @@ public interface ManagementService {
 			throws Exception;
 
 	public UserInfo createAdminUser(String username, String name, String email,
-			String password, boolean activated, boolean disabled,
-			boolean sendEmail) throws Exception;
+			String password, boolean activated, boolean disabled) throws Exception;
 
-	public UserInfo createAdminFrom(User user, String password,
-			boolean sendEmail) throws Exception;
+	public UserInfo createAdminFrom(User user, String password) throws Exception;
 
 	public UserInfo createAdminFromPrexistingPassword(User user,
-			String precypheredPassword, String hashType, boolean sendEmail) throws Exception;
+			String precypheredPassword, String hashType) throws Exception;
 
-	public UUID createApplication(UUID organizationId, String applicationName)
+	public ApplicationInfo createApplication(UUID organizationId, String applicationName)
 			throws Exception;
 
-	public UUID createApplication(UUID organizationId, String applicationName,
+	public ApplicationInfo createApplication(UUID organizationId, String applicationName,
 			Map<String, Object> properties) throws Exception;
 
 	public OrganizationInfo createOrganization(String organizationName,
-			UserInfo user, boolean activated, boolean sendEmail)
-			throws Exception;
+			UserInfo user, boolean activated) throws Exception;
 
   public OrganizationOwnerInfo createOwnerAndOrganization(
  			String organizationName, String username, String name,
@@ -88,10 +82,16 @@ public interface ManagementService {
 
 	public OrganizationOwnerInfo createOwnerAndOrganization(
 			String organizationName, String username, String name,
-			String email, String password, boolean activated, boolean disabled,
-			boolean sendEmail) throws Exception;
+			String email, String password, boolean activated, boolean disabled) throws Exception;
 
-	public void deactivateAdminUser(UUID userId) throws Exception;
+	/**
+	 * Deactivate the user and return it's current state
+	 * @param applicationId
+	 * @param userId
+	 * @return
+	 * @throws Exception
+	 */
+	public User deactivateUser(UUID applicationId, UUID userId) throws Exception;
 
 	public void deactivateOrganization(UUID organizationId) throws Exception;
 
@@ -108,14 +108,21 @@ public interface ManagementService {
 
 	public UserInfo findAdminUser(String identifier);
 
-	public String getAccessTokenForAdminUser(UUID userId) throws Exception;
+	public String getAccessTokenForAdminUser(UUID userId, long duration) throws Exception;
+	
+	/**
+	 * Revoke all active access tokens for this admin user
+	 * @param userId
+	 * @throws Exception 
+	 */
+	public void revokeAccessTokensForAdminUser(UUID userId) throws Exception;
 
-	public String getActivationTokenForAdminUser(UUID userId) throws Exception;
+	public String getActivationTokenForAdminUser(UUID userId, long ttl) throws Exception;
 
-	public String getConfirmationTokenForAdminUser(UUID userId)
+	public String getConfirmationTokenForAdminUser(UUID userId, long ttl)
 			throws Exception;
 
-	public String getActivationTokenForOrganization(UUID organizationId)
+	public String getActivationTokenForOrganization(UUID organizationId, long ttl)
 			throws Exception;
 
 	public ServiceResults getAdminUserActivities(UserInfo user)
@@ -212,7 +219,7 @@ public interface ManagementService {
 	public BiMap<UUID, String> getOrganizationsForAdminUser(UUID userId)
 			throws Exception;
 
-	public String getPasswordResetTokenForAdminUser(UUID userId)
+	public String getPasswordResetTokenForAdminUser(UUID userId, long ttl)
 			throws Exception;
 
 	public UserInfo getAdminUserByUuid(UUID id) throws Exception;
@@ -300,8 +307,15 @@ public interface ManagementService {
 	public boolean checkPasswordResetTokenForAppUser(UUID applicationId,
 			UUID userId, String token) throws Exception;
 
-	public String getAccessTokenForAppUser(UUID applicationId, UUID userId)
+	public String getAccessTokenForAppUser(UUID applicationId, UUID userId, long duration)
 			throws Exception;
+	
+	/**
+     * Revoke all active access tokens for this admin user
+     * @param userId
+	 * @throws Exception 
+     */
+    public void revokeAccessTokensForAppUser(UUID applicationId, UUID userId) throws Exception;
 
 	public User getAppUserByIdentifier(UUID applicationId, Identifier identifier)
 			throws Exception;
@@ -356,4 +370,7 @@ public interface ManagementService {
 	public User getOrCreateUserForFoursquareAccessToken(UUID applicationId,
 			String fq_access_token) throws Exception;
 
+    public abstract void provisionSuperuser() throws Exception;
+
+  List<OrganizationInfo> getOrganizations(UUID startResult, int count) throws Exception;
 }

@@ -32,6 +32,7 @@
 				<filtering>true</filtering>
 				<includes>
 					<include>**/*.xml</include>
+                    <include>**/*.yaml</include>
                     <include>**/*.properties</include>
 				</includes>
 			</resource>
@@ -462,5 +463,10 @@
 			<artifactId>javax.servlet-api</artifactId>
 			<version>3.0.1</version>
 		</dependency>
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>12.0</version>
+        </dependency>
 	</dependencies>
 </project>
